@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TabMind</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <h1 class="logo-text">TabMind</h1>
+      <p class="subtitle-text">Intelligent browser workspace manager</p>
+    </header>
+
+    <!-- Workspace Save Form -->
+    <section class="form-section">
+      <div class="input-group">
+        <label for="workspaceName" class="input-label">Workspace Name</label>
+        <input 
+          type="text" 
+          id="workspaceName" 
+          class="text-input" 
+          placeholder="e.g., Qdrant vs Pinecone Research"
+          autocomplete="off"
+        >
+      </div>
+
+      <div class="input-group">
+        <label for="workspaceNotes" class="input-label">Workspace Notes</label>
+        <textarea 
+          id="workspaceNotes" 
+          class="textarea-input" 
+          placeholder="Add summaries, goals, or tasks..."
+          rows="3"
+        ></textarea>
+      </div>
+
+      <button id="saveBtn" class="primary-btn" disabled>
+        Save Current Window
+      </button>
+    </section>
+
+    <!-- Statistics Bar -->
+    <section id="statsSection" class="stats-section" style="display: none;"></section>
+
+    <!-- Search & Sort Controls -->
+    <section class="controls-section">
+      <input 
+        type="text" 
+        id="searchInput" 
+        class="text-input search-input" 
+        placeholder="Search workspaces..."
+        autocomplete="off"
+      >
+      <select id="sortSelect" class="sort-select">
+        <option value="newest">Newest First</option>
+        <option value="oldest">Oldest First</option>
+        <option value="az">A → Z</option>
+        <option value="za">Z → A</option>
+        <option value="most_tabs">Most Tabs</option>
+        <option value="least_tabs">Least Tabs</option>
+      </select>
+    </section>
+
+    <!-- Workspace List Area -->
+    <section class="workspace-section">
+      <h2 class="section-title">Saved Workspaces</h2>
+      <div id="workspaceList"></div>
+    </section>
+
+    <!-- Import / Export Tools -->
+    <section class="tools-section">
+      <button id="exportBtn" class="tool-btn">Export Backup</button>
+      <button id="importBtn" class="tool-btn">Import Backup</button>
+      <input type="file" id="importFileInput" accept=".json" style="display: none;">
+    </section>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+      <span class="version-badge">v2.1.0</span>
+    </footer>
+  </div>
+
+  <!-- Import Preview Modal (rendered dynamically by popup.js) -->
+  <div id="importModal" class="modal-overlay" style="display: none;"></div>
+
+  <script type="module" src="./popup.js"></script>
+</body>
+</html>
