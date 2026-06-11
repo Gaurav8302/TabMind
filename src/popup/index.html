@@ -10,9 +10,54 @@
   <div class="app-container">
     <!-- Header -->
     <header class="app-header">
-      <h1 class="logo-text">TabMind</h1>
-      <p class="subtitle-text">Intelligent browser workspace manager</p>
+      <div class="header-row">
+        <div>
+          <h1 class="logo-text">TabMind</h1>
+          <p class="subtitle-text">Intelligent browser workspace manager</p>
+        </div>
+        <button id="aiSettingsToggle" class="icon-btn" title="AI Settings">⚙</button>
+      </div>
     </header>
+
+    <!-- AI Settings Panel (collapsed by default) -->
+    <section id="aiSettingsPanel" class="ai-settings-panel" style="display: none;">
+      <div class="ai-settings-header">
+        <span class="ai-settings-title">AI Settings</span>
+        <span id="aiStatusIndicator" class="ai-status-dot offline" title="Not connected"></span>
+      </div>
+      <div class="input-group">
+        <label for="aiEndpoint" class="input-label">Ollama Endpoint</label>
+        <input 
+          type="text" 
+          id="aiEndpoint" 
+          class="text-input ai-input" 
+          placeholder="http://localhost:11434"
+          autocomplete="off"
+        >
+      </div>
+      <div class="input-group">
+        <label for="aiModel" class="input-label">Model</label>
+        <input 
+          type="text" 
+          id="aiModel" 
+          class="text-input ai-input" 
+          placeholder="gemma3:1b"
+          autocomplete="off"
+        >
+      </div>
+      <div class="ai-settings-actions">
+        <button id="aiTestBtn" class="tool-btn ai-test-btn">Test Connection</button>
+        <button id="aiSaveBtn" class="tool-btn ai-save-btn">Save</button>
+      </div>
+    </section>
+
+    <!-- AI Organize Button -->
+    <section class="ai-organize-section">
+      <button id="organizeBtn" class="organize-btn">
+        <span class="organize-icon">✦</span>
+        Organize Tabs with AI
+      </button>
+    </section>
 
     <!-- Workspace Save Form -->
     <section class="form-section">
@@ -79,12 +124,15 @@
 
     <!-- Footer -->
     <footer class="app-footer">
-      <span class="version-badge">v2.1.0</span>
+      <span class="version-badge">v3.0.0</span>
     </footer>
   </div>
 
-  <!-- Import Preview Modal (rendered dynamically by popup.js) -->
+  <!-- Import Preview Modal -->
   <div id="importModal" class="modal-overlay" style="display: none;"></div>
+
+  <!-- AI Organize Preview Modal -->
+  <div id="organizeModal" class="modal-overlay" style="display: none;"></div>
 
   <script type="module" src="./popup.js"></script>
 </body>

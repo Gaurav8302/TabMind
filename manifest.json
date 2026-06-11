@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "TabMind",
-  "version": "1.0.0",
+  "version": "3.0.0",
   "description": "An intelligent workspace manager for your browser tabs.",
   "action": {
     "default_popup": "src/popup/index.html",
@@ -13,7 +13,12 @@
   },
   "permissions": [
     "storage",
-    "tabs"
+    "tabs",
+    "declarativeNetRequest"
+  ],
+  "host_permissions": [
+    "http://localhost/*",
+    "http://127.0.0.1/*"
   ],
   "icons": {
     "16": "public/assets/icon-16.png",
@@ -21,3 +26,4 @@
     "128": "public/assets/icon-128.png"
   }
 }
+

@@ -2,9 +2,11 @@
  * TabMind Popup Controller
  * Orchestrates workspace lifecycle: save, list, restore, update, duplicate, delete.
  * Phase 2: search, sort, export, import with conflict resolution, statistics.
+ * Phase 3.1: AI tab organization via Ollama.
  * All browser operations go through ChromeService.
  * All storage operations go through StorageService.
  * All import conflict logic goes through ImportManager.
+ * All AI operations go through OllamaService.
  */
 
 import { generateWorkspaceId } from '../utils/crypto.js';
@@ -17,6 +19,11 @@ import {
   CONFLICT_TYPES,
   RESOLUTION_ACTIONS,
 } from '../services/import-manager.js';
+import {
+  testConnection,
+  organizeTabs,
+  extractTabSummaries,
+} from '../services/ollama-service.js';
 import { CONFIG } from '../config.js';
 
 // ── DOM References ──────────────────────────────────────
@@ -32,16 +39,24 @@ const importBtn = document.getElementById('importBtn');
 const importFileInput = document.getElementById('importFileInput');
 const importModal = document.getElementById('importModal');
 
+// AI DOM references
+const aiSettingsToggle = document.getElementById('aiSettingsToggle');
+const aiSettingsPanel = document.getElementById('aiSettingsPanel');
+const aiEndpointInput = document.getElementById('aiEndpoint');
+const aiModelInput = document.getElementById('aiModel');
+const aiTestBtn = document.getElementById('aiTestBtn');
+const aiSaveBtn = document.getElementById('aiSaveBtn');
+const aiStatusIndicator = document.getElementById('aiStatusIndicator');
+const organizeBtn = document.getElementById('organizeBtn');
+const organizeModal = document.getElementById('organizeModal');
+
 // ── State ───────────────────────────────────────────────
 let cachedWorkspaces = [];
+let activeConflictReport = null;
+let activeOrganization = null; // Holds { groups, tabs } during preview
 
 // ── Toast Notifications ─────────────────────────────────
 
-/**
- * Displays a temporary toast message at the bottom of the popup.
- * @param {string} message - Text to display.
- * @param {'success'|'error'} type - Visual style of the toast.
- */
 function showToast(message, type = 'success') {
   const existing = document.querySelector('.toast');
   if (existing) existing.remove();
@@ -467,9 +482,6 @@ exportBtn.addEventListener('click', handleExport);
 // ██ IMPORT WITH CONFLICT RESOLUTION
 // ══════════════════════════════════════════════════════════
 
-// Holds the active conflict report between modal render and confirm
-let activeConflictReport = null;
-
 importBtn.addEventListener('click', () => {
   importFileInput.value = '';
   importFileInput.click();
@@ -490,18 +502,15 @@ importFileInput.addEventListener('change', async (e) => {
       return;
     }
 
-    // Validate structure
     const validation = StorageService.validateImportData(data);
     if (!validation.valid) {
       showToast(validation.error, 'error');
       return;
     }
 
-    // Detect conflicts against existing workspaces
     const existingWorkspaces = await StorageService.getRawWorkspaces();
     const conflictReport = detectConflicts(existingWorkspaces, data.workspaces);
 
-    // Show the import preview modal
     activeConflictReport = conflictReport;
     showImportModal(conflictReport);
   } catch (err) {
@@ -510,13 +519,6 @@ importFileInput.addEventListener('change', async (e) => {
   }
 });
 
-// ── Import Modal Rendering ──────────────────────────────
-
-/**
- * Renders the import preview modal with conflict report.
- * Popup only renders UI — no business logic here.
- * @param {Array<object>} conflictReport - From detectConflicts().
- */
 function showImportModal(conflictReport) {
   const summary = summarizeConflicts(conflictReport);
 
@@ -546,11 +548,9 @@ function showImportModal(conflictReport) {
 
   importModal.style.display = 'flex';
 
-  // Bind modal buttons
   document.getElementById('modalCancelBtn').addEventListener('click', closeImportModal);
   document.getElementById('modalConfirmBtn').addEventListener('click', confirmImport);
 
-  // Bind resolution dropdowns
   importModal.querySelectorAll('.resolution-select').forEach((select) => {
     select.addEventListener('change', (ev) => {
       const idx = parseInt(ev.target.dataset.index, 10);
@@ -559,17 +559,10 @@ function showImportModal(conflictReport) {
   });
 }
 
-/**
- * Renders a single conflict row in the modal list.
- * @param {object} entry - A conflict report entry.
- * @param {number} index - Row index for data binding.
- * @returns {string} HTML string.
- */
 function renderConflictRow(entry, index) {
   const { imported, conflictType, matchedExisting, selectedAction } = entry;
   const tabCount = imported.tabs?.length || 0;
 
-  // Determine badge class and label
   let badgeClass, badgeLabel;
   switch (conflictType) {
     case CONFLICT_TYPES.NEW:
@@ -586,17 +579,14 @@ function renderConflictRow(entry, index) {
       break;
   }
 
-  // Build detail text
   let detailText = `${tabCount} tab${tabCount !== 1 ? 's' : ''}`;
   if (conflictType === CONFLICT_TYPES.SIMILAR && matchedExisting) {
     const existingTabs = matchedExisting.tabs?.length || 0;
     detailText = `${existingTabs} → ${tabCount} tabs`;
   }
 
-  // Build resolution options based on conflict type
   let optionsHtml;
   if (conflictType === CONFLICT_TYPES.NEW) {
-    // New workspaces auto-import, but let user skip if desired
     optionsHtml = `
       <option value="${RESOLUTION_ACTIONS.IMPORT}" ${selectedAction === RESOLUTION_ACTIONS.IMPORT ? 'selected' : ''}>Import</option>
       <option value="${RESOLUTION_ACTIONS.SKIP}" ${selectedAction === RESOLUTION_ACTIONS.SKIP ? 'selected' : ''}>Skip</option>
@@ -634,8 +624,6 @@ function closeImportModal() {
   activeConflictReport = null;
 }
 
-// ── Execute Import ──────────────────────────────────────
-
 async function confirmImport() {
   if (!activeConflictReport) return;
 
@@ -646,13 +634,11 @@ async function confirmImport() {
       activeConflictReport
     );
 
-    // Persist the resolved workspace list
     await StorageService.replaceAllWorkspaces(workspaces);
 
     closeImportModal();
     await renderWorkspaces();
 
-    // Show result summary
     const parts = [];
     if (stats.imported > 0) parts.push(`${stats.imported} imported`);
     if (stats.replaced > 0) parts.push(`${stats.replaced} replaced`);
@@ -666,6 +652,289 @@ async function confirmImport() {
   }
 }
 
+// ══════════════════════════════════════════════════════════
+// ██ AI SETTINGS PANEL
+// ══════════════════════════════════════════════════════════
+
+aiSettingsToggle.addEventListener('click', () => {
+  const isVisible = aiSettingsPanel.style.display !== 'none';
+  aiSettingsPanel.style.display = isVisible ? 'none' : 'flex';
+  aiSettingsToggle.classList.toggle('active', !isVisible);
+});
+
+// ── Test Connection ─────────────────────────────────────
+
+aiTestBtn.addEventListener('click', async () => {
+  const endpoint = aiEndpointInput.value.trim() || CONFIG.AI.DEFAULT_ENDPOINT;
+  const model = aiModelInput.value.trim() || CONFIG.AI.DEFAULT_MODEL;
+
+  aiStatusIndicator.className = 'ai-status-dot testing';
+  aiStatusIndicator.title = 'Testing...';
+  aiTestBtn.textContent = 'Testing...';
+  aiTestBtn.disabled = true;
+
+  try {
+    const result = await testConnection(endpoint, model);
+
+    if (result.ok) {
+      aiStatusIndicator.className = 'ai-status-dot online';
+      aiStatusIndicator.title = 'Connected';
+      showToast(`Connected to Ollama. Model "${model}" available.`, 'success');
+    } else {
+      aiStatusIndicator.className = 'ai-status-dot error';
+      aiStatusIndicator.title = result.error;
+      showToast(result.error, 'error');
+    }
+  } catch (err) {
+    aiStatusIndicator.className = 'ai-status-dot error';
+    aiStatusIndicator.title = 'Connection failed';
+    showToast(err.message || 'Connection test failed.', 'error');
+  } finally {
+    aiTestBtn.textContent = 'Test Connection';
+    aiTestBtn.disabled = false;
+  }
+});
+
+// ── Save AI Settings ────────────────────────────────────
+
+aiSaveBtn.addEventListener('click', async () => {
+  const endpoint = aiEndpointInput.value.trim() || CONFIG.AI.DEFAULT_ENDPOINT;
+  const model = aiModelInput.value.trim() || CONFIG.AI.DEFAULT_MODEL;
+
+  try {
+    await StorageService.setAiSettings({ endpoint, model });
+    showToast('AI settings saved.', 'success');
+  } catch (err) {
+    showToast('Failed to save AI settings.', 'error');
+  }
+});
+
+// ══════════════════════════════════════════════════════════
+// ██ AI TAB ORGANIZATION
+// ══════════════════════════════════════════════════════════
+
+organizeBtn.addEventListener('click', handleOrganize);
+
+async function handleOrganize() {
+  const settings = await StorageService.getAiSettings();
+  const endpoint = settings.endpoint;
+  const model = settings.model;
+
+  // Disable the button and show loading state
+  organizeBtn.disabled = true;
+  organizeBtn.classList.add('loading');
+  organizeBtn.innerHTML = '<span class="organize-icon">✦</span> Analyzing tabs...';
+
+  // Show loading modal
+  showOrganizeLoading(model);
+
+  try {
+    // Step 1: Read current window tabs
+    const tabs = await ChromeService.getCurrentWindowTabs();
+
+    if (tabs.length < 3) {
+      closeOrganizeModal();
+      showToast('Need at least 3 tabs to organize.', 'error');
+      return;
+    }
+
+    // Step 2: Create rollback workspace BEFORE sending to AI
+    const rollbackWorkspace = {
+      id: generateWorkspaceId(),
+      name: CONFIG.AI.ROLLBACK_WORKSPACE_NAME,
+      notes: `Auto-saved before AI organization on ${new Date().toLocaleString()}`,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      tabs: JSON.parse(JSON.stringify(tabs)),
+    };
+    await StorageService.saveWorkspace(rollbackWorkspace);
+
+    // Step 3: Send to Ollama
+    const result = await organizeTabs(endpoint, model, tabs);
+
+    // Step 4: Store result and show preview
+    activeOrganization = { groups: result.groups, tabs };
+    showOrganizePreview(result.groups, tabs);
+  } catch (err) {
+    console.error('AI organization failed:', err);
+    closeOrganizeModal();
+    showToast(err.message || 'AI organization failed.', 'error');
+  } finally {
+    organizeBtn.disabled = false;
+    organizeBtn.classList.remove('loading');
+    organizeBtn.innerHTML = '<span class="organize-icon">✦</span> Organize Tabs with AI';
+  }
+}
+
+// ── Organize Loading State ──────────────────────────────
+
+function showOrganizeLoading(model) {
+  organizeModal.innerHTML = `
+    <div class="modal-container">
+      <div class="modal-header">
+        <div class="modal-title">AI Organization</div>
+        <div class="modal-subtitle">Using ${escapeHtml(model)}</div>
+      </div>
+      <div class="modal-loading">
+        <div class="modal-loading-spinner">✦</div>
+        <div class="modal-loading-text">Analyzing your tabs...</div>
+        <div class="modal-loading-subtext">This may take 10-30 seconds depending on your model</div>
+      </div>
+      <div class="modal-footer">
+        <button class="modal-btn modal-btn-cancel" id="organizeLoadingCancel">Cancel</button>
+      </div>
+    </div>
+  `;
+
+  organizeModal.style.display = 'flex';
+
+  document.getElementById('organizeLoadingCancel').addEventListener('click', () => {
+    closeOrganizeModal();
+    organizeBtn.disabled = false;
+    organizeBtn.classList.remove('loading');
+    organizeBtn.innerHTML = '<span class="organize-icon">✦</span> Organize Tabs with AI';
+  });
+}
+
+// ── Organize Preview ────────────────────────────────────
+
+function showOrganizePreview(groups, tabs) {
+  const summaries = extractTabSummaries(tabs);
+  const totalTabs = tabs.length;
+
+  const groupsHtml = groups.map((group, gi) => {
+    const tabsInGroup = group.tabs.map((idx) => {
+      const s = summaries[idx];
+      return `
+        <div class="organize-tab-item">
+          ${escapeHtml(s?.title || 'Untitled')}
+          <span class="organize-tab-domain">${escapeHtml(s?.domain || '')}</span>
+        </div>
+      `;
+    }).join('');
+
+    return `
+      <div class="organize-group" data-group-index="${gi}">
+        <div class="organize-group-header">
+          <input 
+            type="text" 
+            class="organize-group-name" 
+            data-group-index="${gi}" 
+            value="${escapeHtml(group.name)}"
+          >
+          <span class="organize-group-count">${group.tabs.length} tab${group.tabs.length !== 1 ? 's' : ''}</span>
+          <button class="organize-remove-btn" data-group-index="${gi}">✕</button>
+        </div>
+        <div class="organize-tab-list">
+          ${tabsInGroup}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  organizeModal.innerHTML = `
+    <div class="modal-container">
+      <div class="modal-header">
+        <div class="modal-title">Organization Preview</div>
+        <div class="modal-subtitle">${totalTabs} tabs → ${groups.length} workspaces</div>
+      </div>
+
+      <div class="organize-group-list">
+        ${groupsHtml}
+      </div>
+
+      <div class="modal-footer">
+        <button class="modal-btn modal-btn-cancel" id="organizePreviewCancel">Cancel</button>
+        <button class="modal-btn modal-btn-ai" id="organizePreviewConfirm">Create Workspaces</button>
+      </div>
+    </div>
+  `;
+
+  organizeModal.style.display = 'flex';
+
+  // Bind cancel and confirm
+  document.getElementById('organizePreviewCancel').addEventListener('click', closeOrganizeModal);
+  document.getElementById('organizePreviewConfirm').addEventListener('click', confirmOrganization);
+
+  // Bind group name edits — update activeOrganization in place
+  organizeModal.querySelectorAll('.organize-group-name').forEach((input) => {
+    input.addEventListener('input', (ev) => {
+      const gi = parseInt(ev.target.dataset.groupIndex, 10);
+      if (activeOrganization) {
+        activeOrganization.groups[gi].name = ev.target.value.trim();
+      }
+    });
+  });
+
+  // Bind remove group buttons
+  organizeModal.querySelectorAll('.organize-remove-btn').forEach((btn) => {
+    btn.addEventListener('click', (ev) => {
+      const gi = parseInt(ev.target.dataset.groupIndex, 10);
+      if (!activeOrganization || activeOrganization.groups.length <= 1) {
+        showToast('Cannot remove the last group.', 'error');
+        return;
+      }
+
+      // Remove group and redistribute its tabs to the first remaining group
+      const removedGroup = activeOrganization.groups.splice(gi, 1)[0];
+      activeOrganization.groups[0].tabs.push(...removedGroup.tabs);
+
+      // Re-render preview
+      showOrganizePreview(activeOrganization.groups, activeOrganization.tabs);
+    });
+  });
+}
+
+function closeOrganizeModal() {
+  organizeModal.style.display = 'none';
+  organizeModal.innerHTML = '';
+  activeOrganization = null;
+}
+
+// ── Confirm Organization ────────────────────────────────
+
+async function confirmOrganization() {
+  if (!activeOrganization) return;
+
+  const { groups, tabs } = activeOrganization;
+
+  try {
+    const now = Date.now();
+    let createdCount = 0;
+
+    for (const group of groups) {
+      const groupTabs = group.tabs.map((idx) => tabs[idx]).filter(Boolean);
+
+      if (groupTabs.length === 0) continue;
+
+      const workspace = {
+        id: generateWorkspaceId(),
+        name: group.name || 'Untitled Group',
+        notes: `AI organized on ${new Date(now).toLocaleString()}`,
+        createdAt: now,
+        updatedAt: now,
+        tabs: groupTabs.map((t) => ({
+          url: t.url || '',
+          title: t.title || 'Untitled',
+          favIconUrl: t.favIconUrl || '',
+          pinned: t.pinned || false,
+        })),
+      };
+
+      await StorageService.saveWorkspace(workspace);
+      createdCount++;
+    }
+
+    closeOrganizeModal();
+    await renderWorkspaces();
+
+    showToast(`Created ${createdCount} workspace${createdCount !== 1 ? 's' : ''} from AI organization.`, 'success');
+  } catch (err) {
+    console.error('Failed to create organized workspaces:', err);
+    showToast(err.message || 'Failed to create workspaces.', 'error');
+  }
+}
+
 // ── Initialization ──────────────────────────────────────
 
 async function init() {
@@ -674,6 +943,11 @@ async function init() {
 
     const savedSort = await StorageService.getSortPreference();
     sortSelect.value = savedSort;
+
+    // Restore AI settings into inputs
+    const aiSettings = await StorageService.getAiSettings();
+    aiEndpointInput.value = aiSettings.endpoint;
+    aiModelInput.value = aiSettings.model;
 
     await renderWorkspaces();
     console.log('TabMind popup initialized.');

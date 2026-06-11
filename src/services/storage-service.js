@@ -6,7 +6,7 @@ import { CONFIG } from '../config.js';
  * No other file should call chrome.storage directly.
  */
 
-const { WORKSPACES, META, SORT_PREFERENCE } = CONFIG.STORAGE_KEYS;
+const { WORKSPACES, META, SORT_PREFERENCE, AI_SETTINGS } = CONFIG.STORAGE_KEYS;
 
 export const StorageService = {
   /**
@@ -29,6 +29,35 @@ export const StorageService = {
         },
       });
     }
+  },
+
+  // ── AI Settings ─────────────────────────────────────────
+
+  /**
+   * Retrieves persisted AI settings (endpoint + model).
+   * Falls back to CONFIG defaults if not yet configured.
+   * @returns {Promise<{ endpoint: string, model: string }>}
+   */
+  async getAiSettings() {
+    const result = await chrome.storage.local.get(AI_SETTINGS);
+    return result[AI_SETTINGS] || {
+      endpoint: CONFIG.AI.DEFAULT_ENDPOINT,
+      model: CONFIG.AI.DEFAULT_MODEL,
+    };
+  },
+
+  /**
+   * Persists AI settings.
+   * @param {{ endpoint: string, model: string }} settings
+   * @returns {Promise<void>}
+   */
+  async setAiSettings(settings) {
+    await chrome.storage.local.set({
+      [AI_SETTINGS]: {
+        endpoint: settings.endpoint || CONFIG.AI.DEFAULT_ENDPOINT,
+        model: settings.model || CONFIG.AI.DEFAULT_MODEL,
+      },
+    });
   },
 
   // ── Sort Preference ─────────────────────────────────────
