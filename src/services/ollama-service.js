@@ -96,33 +96,34 @@ export async function testConnection(endpoint, model) {
  * @returns {{ system: string, user: string }}
  */
 function buildPrompt(tabSummaries) {
-  const maxGroups = Math.min(8, Math.max(2, Math.ceil(tabSummaries.length / 2)));
+  const count = tabSummaries.length;
+  const minGroups = Math.max(2, Math.ceil(count / 10));
+  const maxGroups = Math.min(8, Math.max(3, Math.ceil(count / 3)));
+
   const system = `/no_think
-You are a browser workspace organizer. Group tabs into logical workspaces.
+You are a browser tab organizer. Group tabs into distinct workspaces by topic.
 
 Rules:
-- Every tab must belong to exactly one group.
-- No uncategorized tabs allowed.
-- No duplicate tab assignments.
-- Create between 1 and ${maxGroups} groups. Use multiple groups when tabs cover different topics.
-- Prefer these category names when they fit: AI Research, Development, Education, Shopping, Entertainment, Finance, Work, Personal.
-- If none of those categories fit, create a descriptive custom name.
-- Tab indices in the "tabs" array must be integers (e.g. 0, 1, 2), not strings.
-- Return ONLY valid JSON. No markdown, no explanation, no thinking.`;
+- Create ${minGroups} to ${maxGroups} groups. NEVER put all tabs in one group.
+- Tabs about DIFFERENT topics MUST go in DIFFERENT groups.
+- Every tab must belong to exactly one group. No duplicates.
+- Give each group a short, descriptive name based on its tabs (e.g. "Web Development", "Job Applications", "Cloud Infrastructure").
+- Do NOT use vague names like "General", "Miscellaneous", or "Other".
+- Tab indices must be integers (0, 1, 2...), not strings.
+- Return ONLY valid JSON. No markdown, no explanation.`;
 
   const tabList = tabSummaries
     .map((t, i) => `[${i}] ${t.title} (${t.domain})`)
     .join('\n');
 
-  const user = `Group these ${tabSummaries.length} browser tabs into logical workspaces.
+  const user = `Organize these ${count} browser tabs into ${minGroups}-${maxGroups} workspaces by topic.
 
 Tabs:
 ${tabList}
 
-Return JSON in this exact format:
-{"groups":[{"name":"Category Name","tabs":[0,1,2]}]}
+Return JSON: {"groups":[{"name":"Topic Name","tabs":[0,1,2]}]}
 
-Rules reminder: every tab index (0 to ${tabSummaries.length - 1}) must appear exactly once across all groups. Return ONLY the JSON object.`;
+IMPORTANT: You MUST create at least ${minGroups} groups. Every index from 0 to ${count - 1} must appear exactly once. Return ONLY the JSON.`;
 
   return { system, user };
 }
@@ -134,6 +135,9 @@ Rules reminder: every tab index (0 to ${tabSummaries.length - 1}) must appear ex
  * @returns {{ system: string, user: string }}
  */
 function buildRetryPrompt(tabSummaries, previousError) {
+  const count = tabSummaries.length;
+  const minGroups = Math.max(2, Math.ceil(count / 10));
+  const maxGroups = Math.min(8, Math.max(3, Math.ceil(count / 3)));
   const { system } = buildPrompt(tabSummaries);
 
   const tabList = tabSummaries
@@ -142,14 +146,15 @@ function buildRetryPrompt(tabSummaries, previousError) {
 
   const user = `Your previous response was invalid: ${previousError}
 
-Try again. Group these ${tabSummaries.length} tabs.
+Try again. Organize these ${count} tabs into ${minGroups}-${maxGroups} groups.
 
 Tabs:
 ${tabList}
 
-CRITICAL: Return ONLY a raw JSON object. No markdown. No code fences. No explanation.
+CRITICAL: You MUST create at least ${minGroups} groups. NEVER put all tabs in one group.
+Return ONLY a raw JSON object. No markdown. No code fences.
 Format: {"groups":[{"name":"Name","tabs":[0,1,2]}]}
-Every index from 0 to ${tabSummaries.length - 1} must appear exactly once.`;
+Every index from 0 to ${count - 1} must appear exactly once.`;
 
   return { system, user };
 }
@@ -192,10 +197,11 @@ export function validateOrganization(data, totalTabs) {
     return { valid: false, error: 'Response missing "groups" array.' };
   }
 
-  if (data.groups.length < 1 || data.groups.length > 8) {
+  const minGroups = Math.max(2, Math.ceil(totalTabs / 10));
+  if (data.groups.length < minGroups || data.groups.length > 8) {
     return {
       valid: false,
-      error: `Expected 1-8 groups, got ${data.groups.length}.`,
+      error: `Expected ${minGroups}-8 groups for ${totalTabs} tabs, got ${data.groups.length}. You MUST create at least ${minGroups} distinct groups.`,
     };
   }
 

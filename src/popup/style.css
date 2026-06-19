@@ -69,29 +69,51 @@ body {
 
 /* Header */
 .app-header {
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 2px solid transparent;
+  border-image: linear-gradient(90deg, var(--accent), var(--ai-accent), #ec4899) 1;
   padding-bottom: 12px;
 }
 
 .header-row {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
+}
+
+.header-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.header-logo {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  flex-shrink: 0;
+  filter: drop-shadow(0 0 6px rgba(168, 85, 247, 0.35));
+}
+
+.header-brand-text {
+  display: flex;
+  flex-direction: column;
 }
 
 .logo-text {
-  font-size: 1.25rem;
-  font-weight: 700;
-  letter-spacing: -0.025em;
-  background: linear-gradient(135deg, #f9fafb 0%, #9ca3af 100%);
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  background: linear-gradient(135deg, #3b82f6 0%, #a855f7 50%, #ec4899 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+  background-clip: text;
+  line-height: 1.2;
 }
 
 .subtitle-text {
-  font-size: 0.75rem;
-  color: var(--text-secondary);
-  margin-top: 2px;
+  font-size: 0.65rem;
+  color: var(--text-disabled);
+  letter-spacing: 0.02em;
 }
 
 .icon-btn {
@@ -366,6 +388,39 @@ body {
 }
 
 /* ========================================
+   AI Insights Section
+   ======================================== */
+
+.insights-section {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  gap: 6px;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.insight-item {
+  text-align: center;
+}
+
+.insight-value {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--ai-accent);
+  line-height: 1.2;
+}
+
+.insight-label {
+  font-size: 0.58rem;
+  color: var(--text-disabled);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-top: 2px;
+}
+
+/* ========================================
    Search & Sort Controls
    ======================================== */
 
@@ -420,6 +475,68 @@ body {
   font-size: 0.875rem;
   font-weight: 600;
   color: var(--text-secondary);
+}
+
+.workspace-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.bulk-summaries-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: linear-gradient(135deg, var(--ai-accent) 0%, #7c3aed 100%);
+  color: var(--text-primary);
+  border: none;
+  border-radius: 4px;
+  font-size: 0.58rem;
+  font-weight: 600;
+  font-family: var(--font-family);
+  padding: 4px 8px;
+  cursor: pointer;
+  transition: opacity 0.15s ease, box-shadow 0.2s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.bulk-summaries-btn:hover:not(:disabled) {
+  opacity: 0.85;
+  box-shadow: 0 0 12px var(--ai-glow);
+}
+
+.bulk-summaries-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Bulk Progress */
+.bulk-progress-container {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.bulk-progress-bar {
+  height: 4px;
+  background-color: var(--bg-hover);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.bulk-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--ai-accent), #7c3aed);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.bulk-progress-text {
+  font-size: 0.62rem;
+  color: var(--text-disabled);
+  text-align: center;
 }
 
 /* Empty State Card */
@@ -528,6 +645,87 @@ body {
   word-break: break-word;
 }
 
+/* ========================================
+   Workspace Summary Section
+   ======================================== */
+
+.summary-section {
+  border-top: 1px solid var(--border-color);
+  padding-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.card-summary {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  font-style: italic;
+  word-break: break-word;
+  margin: 0;
+}
+
+.card-summary-empty {
+  font-size: 0.68rem;
+  color: var(--text-disabled);
+  font-style: italic;
+  margin: 0;
+}
+
+.stale-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.58rem;
+  font-weight: 600;
+  color: #fbbf24;
+  background-color: rgba(251, 191, 36, 0.1);
+  border: 1px solid rgba(251, 191, 36, 0.25);
+  border-radius: 3px;
+  padding: 2px 6px;
+}
+
+.summary-btn {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: linear-gradient(135deg, var(--ai-accent) 0%, #7c3aed 100%);
+  color: var(--text-primary);
+  border: none;
+  border-radius: 4px;
+  font-size: 0.62rem;
+  font-weight: 600;
+  font-family: var(--font-family);
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: opacity 0.15s ease, box-shadow 0.2s ease;
+}
+
+.summary-btn:hover:not(:disabled) {
+  opacity: 0.85;
+  box-shadow: 0 0 12px var(--ai-glow);
+}
+
+.summary-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.summary-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.summary-btn-icon {
+  font-size: 0.7rem;
+}
+
+.summary-btn-icon.spinning {
+  animation: spin 1s linear infinite;
+}
+
 .card-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -629,15 +827,36 @@ body {
    ======================================== */
 
 .app-footer {
-  border-top: 1px solid var(--border-color);
+  border-top: 2px solid transparent;
+  border-image: linear-gradient(90deg, var(--accent), var(--ai-accent), #ec4899) 1;
   padding-top: 10px;
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
   align-items: center;
 }
 
+.footer-brand {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.footer-logo {
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+  opacity: 0.6;
+}
+
+.footer-text {
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: var(--text-disabled);
+  letter-spacing: 0.02em;
+}
+
 .version-badge {
-  font-size: 0.65rem;
+  font-size: 0.6rem;
   font-weight: 600;
   color: var(--text-disabled);
   background-color: var(--bg-card);

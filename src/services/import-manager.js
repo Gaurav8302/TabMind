@@ -204,6 +204,10 @@ export function executeResolutions(existingWorkspaces, conflictReport) {
           id: `ws_${crypto.randomUUID()}`,
           name: imported.name || 'Imported Workspace',
           notes: imported.notes || '',
+          summary: imported.summary || '',
+          summaryGeneratedAt: imported.summaryGeneratedAt || null,
+          summaryStale: imported.summaryStale || false,
+          summaryMetadata: imported.summaryMetadata || null,
           createdAt: imported.createdAt || now,
           updatedAt: imported.updatedAt || now,
           tabs: sanitizeTabs(imported.tabs),
@@ -219,6 +223,10 @@ export function executeResolutions(existingWorkspaces, conflictReport) {
           if (idx !== -1) {
             result[idx].name = imported.name || result[idx].name;
             result[idx].notes = imported.notes || '';
+            result[idx].summary = imported.summary || '';
+            result[idx].summaryGeneratedAt = imported.summaryGeneratedAt || null;
+            result[idx].summaryStale = imported.summaryStale || false;
+            result[idx].summaryMetadata = imported.summaryMetadata || null;
             result[idx].tabs = sanitizeTabs(imported.tabs);
             result[idx].updatedAt = now;
             // createdAt is preserved
@@ -234,6 +242,10 @@ export function executeResolutions(existingWorkspaces, conflictReport) {
           id: `ws_${crypto.randomUUID()}`,
           name: `${imported.name || 'Workspace'} (Imported)`,
           notes: imported.notes || '',
+          summary: imported.summary || '',
+          summaryGeneratedAt: imported.summaryGeneratedAt || null,
+          summaryStale: imported.summaryStale || false,
+          summaryMetadata: imported.summaryMetadata || null,
           createdAt: imported.createdAt || now,
           updatedAt: imported.updatedAt || now,
           tabs: sanitizeTabs(imported.tabs),
@@ -248,6 +260,10 @@ export function executeResolutions(existingWorkspaces, conflictReport) {
           id: `ws_${crypto.randomUUID()}`,
           name: `${imported.name || 'Workspace'} (Imported)`,
           notes: imported.notes || '',
+          summary: imported.summary || '',
+          summaryGeneratedAt: imported.summaryGeneratedAt || null,
+          summaryStale: imported.summaryStale || false,
+          summaryMetadata: imported.summaryMetadata || null,
           createdAt: imported.createdAt || now,
           updatedAt: imported.updatedAt || now,
           tabs: sanitizeTabs(imported.tabs),

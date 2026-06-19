@@ -11,9 +11,12 @@
     <!-- Header -->
     <header class="app-header">
       <div class="header-row">
-        <div>
-          <h1 class="logo-text">TabMind</h1>
-          <p class="subtitle-text">Intelligent browser workspace manager</p>
+        <div class="header-brand">
+          <img src="/assets/logo.png" alt="TabMind" class="header-logo" />
+          <div class="header-brand-text">
+            <h1 class="logo-text">TabMind</h1>
+            <p class="subtitle-text">Intelligent workspace manager</p>
+          </div>
         </div>
         <button id="aiSettingsToggle" class="icon-btn" title="AI Settings">⚙</button>
       </div>
@@ -90,6 +93,9 @@
     <!-- Statistics Bar -->
     <section id="statsSection" class="stats-section" style="display: none;"></section>
 
+    <!-- AI Insights -->
+    <section id="aiInsightsSection" class="insights-section" style="display: none;"></section>
+
     <!-- Search & Sort Controls -->
     <section class="controls-section">
       <input 
@@ -111,7 +117,13 @@
 
     <!-- Workspace List Area -->
     <section class="workspace-section">
-      <h2 class="section-title">Saved Workspaces</h2>
+      <div class="workspace-section-header">
+        <h2 class="section-title">Saved Workspaces</h2>
+        <button id="bulkSummariesBtn" class="bulk-summaries-btn" style="display: none;">
+          <span class="summary-btn-icon">✦</span> Generate Missing Summaries
+        </button>
+      </div>
+      <div id="bulkProgressContainer" class="bulk-progress-container" style="display: none;"></div>
       <div id="workspaceList"></div>
     </section>
 
@@ -124,7 +136,11 @@
 
     <!-- Footer -->
     <footer class="app-footer">
-      <span class="version-badge">v3.0.0</span>
+      <div class="footer-brand">
+        <img src="/assets/logo.png" alt="" class="footer-logo" />
+        <span class="footer-text">TabMind</span>
+      </div>
+      <span class="version-badge">v4.5.0</span>
     </footer>
   </div>
 

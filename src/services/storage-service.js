@@ -172,6 +172,40 @@ export const StorageService = {
     workspaces[index].tabs = newTabs;
     workspaces[index].updatedAt = Date.now();
 
+    // Mark summary as stale since tabs changed
+    if (workspaces[index].summary && workspaces[index].summary.trim()) {
+      workspaces[index].summaryStale = true;
+    }
+
+    await chrome.storage.local.set({ [WORKSPACES]: workspaces });
+  },
+
+  /**
+   * Updates an existing workspace's AI-generated summary.
+   * Sets summary, summaryGeneratedAt, summaryStale, summaryMetadata, and updatedAt.
+   * @param {string} id - The workspace ID.
+   * @param {string} summary - The generated summary text.
+   * @param {object|null} [metadata=null] - Optional metadata: { model, generatedAt, tabCount }.
+   * @returns {Promise<void>}
+   */
+  async updateWorkspaceSummary(id, summary, metadata = null) {
+    if (!id) {
+      throw new Error('Invalid workspace ID.');
+    }
+
+    const workspaces = await this.getRawWorkspaces();
+    const index = workspaces.findIndex((ws) => ws.id === id);
+
+    if (index === -1) {
+      throw new Error(`Workspace with ID "${id}" not found.`);
+    }
+
+    workspaces[index].summary = summary;
+    workspaces[index].summaryGeneratedAt = Date.now();
+    workspaces[index].summaryStale = false;
+    workspaces[index].summaryMetadata = metadata;
+    workspaces[index].updatedAt = Date.now();
+
     await chrome.storage.local.set({ [WORKSPACES]: workspaces });
   },
 
@@ -203,6 +237,12 @@ export const StorageService = {
       id: `ws_${crypto.randomUUID()}`,
       name: `${source.name} Copy`,
       notes: source.notes,
+      summary: source.summary || '',
+      summaryGeneratedAt: source.summaryGeneratedAt || null,
+      summaryStale: source.summaryStale || false,
+      summaryMetadata: source.summaryMetadata
+        ? JSON.parse(JSON.stringify(source.summaryMetadata))
+        : null,
       createdAt: Date.now(),
       updatedAt: Date.now(),
       tabs: JSON.parse(JSON.stringify(source.tabs)),

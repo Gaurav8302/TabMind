@@ -24,6 +24,8 @@ import {
   organizeTabs,
   extractTabSummaries,
 } from '../services/ollama-service.js';
+import { generateWorkspaceSummary } from '../services/summaryService.js';
+import { computeInsights } from '../services/workspaceInsights.js';
 import { CONFIG } from '../config.js';
 
 // ── DOM References ──────────────────────────────────────
@@ -54,6 +56,12 @@ const organizeModal = document.getElementById('organizeModal');
 let cachedWorkspaces = [];
 let activeConflictReport = null;
 let activeOrganization = null; // Holds { groups, tabs } during preview
+let bulkGenerationState = null; // Holds { running, completed, failed, total }
+
+// New DOM references for Phase 4.5
+const bulkSummariesBtn = document.getElementById('bulkSummariesBtn');
+const bulkProgressContainer = document.getElementById('bulkProgressContainer');
+const aiInsightsSection = document.getElementById('aiInsightsSection');
 
 // ── Toast Notifications ─────────────────────────────────
 
@@ -141,6 +149,7 @@ function filterWorkspaces(workspaces, query) {
 function renderStats(workspaces) {
   if (workspaces.length === 0) {
     statsSection.style.display = 'none';
+    aiInsightsSection.style.display = 'none';
     return;
   }
 
@@ -176,6 +185,9 @@ function renderStats(workspaces) {
       <div class="stat-label">Latest</div>
     </div>
   `;
+
+  // AI Insights
+  renderInsights(workspaces);
 }
 
 function truncate(str, max) {
@@ -248,6 +260,27 @@ function renderCard(ws) {
     ? `<span>${createdDate}</span><span class="meta-sep">·</span><span>Updated ${formatDate(ws.updatedAt)}</span>`
     : `<span>${createdDate}</span>`;
 
+  // Summary section
+  const hasSummary = ws.summary && ws.summary.trim().length > 0;
+  const isStale = hasSummary && ws.summaryStale === true;
+  const summaryText = hasSummary
+    ? `<p class="card-summary">${escapeHtml(ws.summary)}</p>`
+    : `<p class="card-summary-empty">No summary generated yet.</p>`;
+  const staleBadge = isStale
+    ? `<span class="stale-badge">⚠ Summary may be outdated</span>`
+    : '';
+  const summaryBtnLabel = hasSummary ? 'Regenerate Summary' : 'Generate Summary';
+
+  const summaryHtml = `
+    <div class="summary-section">
+      ${summaryText}
+      ${staleBadge}
+      <button class="summary-btn action-btn" data-action="generate-summary" data-id="${ws.id}">
+        <span class="summary-btn-icon">✦</span> ${summaryBtnLabel}
+      </button>
+    </div>
+  `;
+
   return `
     <div class="workspace-card" data-id="${ws.id}">
       <div class="card-header">
@@ -258,6 +291,7 @@ function renderCard(ws) {
       <div class="card-meta">
         ${metaHtml}
       </div>
+      ${summaryHtml}
       <div class="card-actions">
         <button class="action-btn restore-btn" data-action="restore" data-id="${ws.id}">Restore</button>
         <button class="action-btn update-btn" data-action="update" data-id="${ws.id}">Update</button>
@@ -305,6 +339,9 @@ workspaceListContainer.addEventListener('click', async (e) => {
     case 'delete':
       await handleDelete(id);
       break;
+    case 'generate-summary':
+      await handleGenerateSummary(id, btn);
+      break;
   }
 });
 
@@ -334,6 +371,10 @@ async function handleSave() {
       id: generateWorkspaceId(),
       name,
       notes,
+      summary: '',
+      summaryGeneratedAt: null,
+      summaryStale: false,
+      summaryMetadata: null,
       createdAt: Date.now(),
       updatedAt: Date.now(),
       tabs,
@@ -437,6 +478,56 @@ async function handleDelete(id) {
   } catch (err) {
     console.error('Delete failed:', err);
     showToast(err.message || 'Failed to delete workspace.', 'error');
+  }
+}
+
+// ── Generate Summary ────────────────────────────────────
+
+async function handleGenerateSummary(id, btn) {
+  try {
+    const workspace = await StorageService.getWorkspaceById(id);
+
+    if (!workspace) {
+      showToast('Workspace not found.', 'error');
+      return;
+    }
+
+    // Set loading state
+    btn.disabled = true;
+    btn.innerHTML = '<span class="summary-btn-icon spinning">✦</span> Generating...';
+
+    const settings = await StorageService.getAiSettings();
+    const result = await generateWorkspaceSummary(
+      workspace,
+      settings.endpoint,
+      settings.model
+    );
+
+    if (result.success) {
+      const metadata = {
+        model: settings.model,
+        generatedAt: Date.now(),
+        tabCount: workspace.tabs?.length || 0,
+      };
+      await StorageService.updateWorkspaceSummary(id, result.summary, metadata);
+      await renderWorkspaces();
+      showToast('Summary generated.', 'success');
+    } else {
+      showToast(result.error || 'Summary generation failed.', 'error');
+      // Re-enable button on failure
+      btn.disabled = false;
+      const hasSummary = workspace.summary && workspace.summary.trim().length > 0;
+      const label = hasSummary ? 'Regenerate Summary' : 'Generate Summary';
+      btn.innerHTML = `<span class="summary-btn-icon">✦</span> ${label}`;
+    }
+  } catch (err) {
+    console.error('Summary generation failed:', err);
+    showToast(err.message || 'Summary generation failed.', 'error');
+    // Re-enable button on error
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<span class="summary-btn-icon">✦</span> Generate Summary';
+    }
   }
 }
 
@@ -901,6 +992,7 @@ async function confirmOrganization() {
   try {
     const now = Date.now();
     let createdCount = 0;
+    const createdIds = [];
 
     for (const group of groups) {
       const groupTabs = group.tabs.map((idx) => tabs[idx]).filter(Boolean);
@@ -911,6 +1003,10 @@ async function confirmOrganization() {
         id: generateWorkspaceId(),
         name: group.name || 'Untitled Group',
         notes: `AI organized on ${new Date(now).toLocaleString()}`,
+        summary: '',
+        summaryGeneratedAt: null,
+        summaryStale: false,
+        summaryMetadata: null,
         createdAt: now,
         updatedAt: now,
         tabs: groupTabs.map((t) => ({
@@ -922,6 +1018,7 @@ async function confirmOrganization() {
       };
 
       await StorageService.saveWorkspace(workspace);
+      createdIds.push(workspace.id);
       createdCount++;
     }
 
@@ -929,6 +1026,9 @@ async function confirmOrganization() {
     await renderWorkspaces();
 
     showToast(`Created ${createdCount} workspace${createdCount !== 1 ? 's' : ''} from AI organization.`, 'success');
+
+    // Auto-generate summaries for newly created workspaces (non-blocking)
+    autoGenerateSummaries(createdIds);
   } catch (err) {
     console.error('Failed to create organized workspaces:', err);
     showToast(err.message || 'Failed to create workspaces.', 'error');
@@ -950,6 +1050,10 @@ async function init() {
     aiModelInput.value = aiSettings.model;
 
     await renderWorkspaces();
+
+    // Wire bulk summaries button
+    bulkSummariesBtn.addEventListener('click', handleBulkGenerate);
+
     console.log('TabMind popup initialized.');
   } catch (err) {
     console.error('Initialization failed:', err);
@@ -958,3 +1062,200 @@ async function init() {
 }
 
 init();
+
+// ══════════════════════════════════════════════════════════
+// ██ BULK SUMMARY GENERATION
+// ══════════════════════════════════════════════════════════
+
+/**
+ * Finds workspaces without summaries and generates them sequentially.
+ * Saves after each workspace. Shows progress in real time.
+ * Continues past individual failures.
+ */
+async function handleBulkGenerate() {
+  const workspaces = await StorageService.getRawWorkspaces();
+  const unsummarized = workspaces.filter(
+    (ws) => !ws.summary || ws.summary.trim() === ''
+  );
+
+  if (unsummarized.length === 0) {
+    showToast('All workspaces already have summaries.', 'success');
+    return;
+  }
+
+  const settings = await StorageService.getAiSettings();
+
+  // Initialize state
+  bulkGenerationState = {
+    running: true,
+    completed: 0,
+    failed: 0,
+    total: unsummarized.length,
+  };
+
+  bulkSummariesBtn.disabled = true;
+  bulkSummariesBtn.innerHTML = '<span class="summary-btn-icon spinning">✦</span> Generating...';
+  renderBulkProgress();
+
+  for (const ws of unsummarized) {
+    if (!bulkGenerationState.running) break; // Allow cancellation
+
+    try {
+      const result = await generateWorkspaceSummary(
+        ws,
+        settings.endpoint,
+        settings.model
+      );
+
+      if (result.success) {
+        const metadata = {
+          model: settings.model,
+          generatedAt: Date.now(),
+          tabCount: ws.tabs?.length || 0,
+        };
+        await StorageService.updateWorkspaceSummary(ws.id, result.summary, metadata);
+        bulkGenerationState.completed++;
+      } else {
+        bulkGenerationState.failed++;
+      }
+    } catch {
+      bulkGenerationState.failed++;
+    }
+
+    renderBulkProgress();
+  }
+
+  // Final report
+  const { completed, failed } = bulkGenerationState;
+  bulkGenerationState.running = false;
+
+  const parts = [];
+  if (completed > 0) parts.push(`${completed} summaries generated`);
+  if (failed > 0) parts.push(`${failed} failed`);
+  showToast(parts.join(', ') || 'Bulk generation complete.', failed > 0 ? 'error' : 'success');
+
+  // Reset UI
+  bulkSummariesBtn.disabled = false;
+  bulkSummariesBtn.innerHTML = '<span class="summary-btn-icon">✦</span> Generate Missing Summaries';
+  bulkGenerationState = null;
+
+  // Hide progress after a delay
+  setTimeout(() => {
+    bulkProgressContainer.style.display = 'none';
+    bulkProgressContainer.innerHTML = '';
+  }, 2000);
+
+  await renderWorkspaces();
+}
+
+/**
+ * Renders the bulk generation progress bar.
+ */
+function renderBulkProgress() {
+  if (!bulkGenerationState) return;
+
+  const { completed, failed, total } = bulkGenerationState;
+  const done = completed + failed;
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+
+  bulkProgressContainer.style.display = 'block';
+  bulkProgressContainer.innerHTML = `
+    <div class="bulk-progress-bar">
+      <div class="bulk-progress-fill" style="width: ${pct}%"></div>
+    </div>
+    <div class="bulk-progress-text">
+      Generating summaries... ${done} / ${total} completed${failed > 0 ? ` (${failed} failed)` : ''}
+    </div>
+  `;
+}
+
+// ══════════════════════════════════════════════════════════
+// ██ AI INSIGHTS DASHBOARD
+// ══════════════════════════════════════════════════════════
+
+/**
+ * Renders the AI Insights panel using computeInsights.
+ * Also controls visibility of the bulk summaries button.
+ */
+function renderInsights(workspaces) {
+  const insights = computeInsights(workspaces);
+
+  // Show/hide bulk button based on unsummarized count
+  if (insights.unsummarizedWorkspaces > 0 && !bulkGenerationState?.running) {
+    bulkSummariesBtn.style.display = 'inline-flex';
+  } else {
+    bulkSummariesBtn.style.display = 'none';
+  }
+
+  // Only show insights if there are any summaries or pending
+  if (insights.summarizedWorkspaces === 0 && insights.unsummarizedWorkspaces === 0) {
+    aiInsightsSection.style.display = 'none';
+    return;
+  }
+
+  aiInsightsSection.style.display = 'grid';
+  aiInsightsSection.innerHTML = `
+    <div class="insight-item">
+      <div class="insight-value">${insights.summarizedWorkspaces}</div>
+      <div class="insight-label">Summarized</div>
+    </div>
+    <div class="insight-item">
+      <div class="insight-value">${insights.unsummarizedWorkspaces}</div>
+      <div class="insight-label">Pending</div>
+    </div>
+    <div class="insight-item">
+      <div class="insight-value">${insights.staleSummaries}</div>
+      <div class="insight-label">Outdated</div>
+    </div>
+    <div class="insight-item">
+      <div class="insight-value">${insights.averageTabsPerWorkspace}</div>
+      <div class="insight-label">Avg Tabs</div>
+    </div>
+  `;
+}
+
+// ══════════════════════════════════════════════════════════
+// ██ AUTO-SUMMARY AFTER AI ORGANIZATION
+// ══════════════════════════════════════════════════════════
+
+/**
+ * Generates summaries for newly created workspaces.
+ * Non-blocking — failures are silently logged.
+ * @param {string[]} workspaceIds - IDs of workspaces to summarize.
+ */
+async function autoGenerateSummaries(workspaceIds) {
+  if (!workspaceIds || workspaceIds.length === 0) return;
+
+  const settings = await StorageService.getAiSettings();
+  let generated = 0;
+
+  for (const id of workspaceIds) {
+    try {
+      const ws = await StorageService.getWorkspaceById(id);
+      if (!ws) continue;
+
+      const result = await generateWorkspaceSummary(
+        ws,
+        settings.endpoint,
+        settings.model
+      );
+
+      if (result.success) {
+        const metadata = {
+          model: settings.model,
+          generatedAt: Date.now(),
+          tabCount: ws.tabs?.length || 0,
+        };
+        await StorageService.updateWorkspaceSummary(id, result.summary, metadata);
+        generated++;
+      }
+    } catch (err) {
+      console.warn(`TabMind: Auto-summary failed for workspace ${id}:`, err.message);
+    }
+  }
+
+  if (generated > 0) {
+    await renderWorkspaces();
+    showToast(`Auto-generated ${generated} summary${generated !== 1 ? 'ies' : 'y'}.`, 'success');
+  }
+}

@@ -5,7 +5,13 @@
   "description": "An intelligent workspace manager for your browser tabs.",
   "action": {
     "default_popup": "src/popup/index.html",
-    "default_title": "TabMind"
+    "default_title": "TabMind",
+    "default_icon": {
+      "16": "public/assets/icon-16.png",
+      "32": "public/assets/icon-32.png",
+      "48": "public/assets/icon-48.png",
+      "128": "public/assets/icon-128.png"
+    }
   },
   "background": {
     "service_worker": "src/background/service-worker.js",
@@ -22,6 +28,7 @@
   ],
   "icons": {
     "16": "public/assets/icon-16.png",
+    "32": "public/assets/icon-32.png",
     "48": "public/assets/icon-48.png",
     "128": "public/assets/icon-128.png"
   }
