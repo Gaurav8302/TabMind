@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "TabMind",
-  "version": "3.0.0",
+  "version": "4.6.0",
   "description": "An intelligent workspace manager for your browser tabs.",
   "action": {
     "default_popup": "src/popup/index.html",
@@ -24,7 +24,10 @@
   ],
   "host_permissions": [
     "http://localhost/*",
-    "http://127.0.0.1/*"
+    "http://127.0.0.1/*",
+    "https://generativelanguage.googleapis.com/*",
+    "https://openrouter.ai/*",
+    "https://api.groq.com/*"
   ],
   "icons": {
     "16": "public/assets/icon-16.png",

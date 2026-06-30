@@ -6,7 +6,8 @@ import { CONFIG } from '../config.js';
  * No other file should call chrome.storage directly.
  */
 
-const { WORKSPACES, META, SORT_PREFERENCE, AI_SETTINGS } = CONFIG.STORAGE_KEYS;
+const { WORKSPACES, META, SORT_PREFERENCE, AI_SETTINGS, PREFERENCE_MEMORY } = CONFIG.STORAGE_KEYS;
+const SCHEMA_VERSION = 2;
 
 export const StorageService = {
   /**
@@ -34,30 +35,90 @@ export const StorageService = {
   // ── AI Settings ─────────────────────────────────────────
 
   /**
-   * Retrieves persisted AI settings (endpoint + model).
+   * Retrieves persisted AI settings (multi-provider).
    * Falls back to CONFIG defaults if not yet configured.
-   * @returns {Promise<{ endpoint: string, model: string }>}
+   * Handles migration from the old single-provider schema.
+   * @returns {Promise<object>} Full AI settings object.
    */
   async getAiSettings() {
-    const result = await chrome.storage.local.get(AI_SETTINGS);
-    return result[AI_SETTINGS] || {
-      endpoint: CONFIG.AI.DEFAULT_ENDPOINT,
-      model: CONFIG.AI.DEFAULT_MODEL,
-    };
+    const result = await chrome.storage.local.get([AI_SETTINGS, META]);
+    const stored = result[AI_SETTINGS];
+    const meta = result[META] || {};
+
+    // If no settings exist at all, return defaults
+    if (!stored) {
+      return this.getDefaultAiSettings();
+    }
+
+    // Migration: detect old schema (has endpoint/model but no aiProvider)
+    if (stored.endpoint !== undefined && stored.aiProvider === undefined) {
+      const migrated = {
+        aiProvider: 'ollama',
+        ollamaEndpoint: stored.endpoint || CONFIG.AI.DEFAULT_ENDPOINT,
+        ollamaModel: stored.model || CONFIG.AI.DEFAULT_MODEL,
+        geminiApiKey: '',
+        geminiModel: CONFIG.AI.DEFAULT_GEMINI_MODEL,
+        openRouterApiKey: '',
+        openRouterModel: CONFIG.AI.DEFAULT_OPENROUTER_MODEL,
+        groqApiKey: '',
+        groqModel: CONFIG.AI.DEFAULT_GROQ_MODEL,
+      };
+
+      // Persist migrated settings and update schema version
+      await chrome.storage.local.set({
+        [AI_SETTINGS]: migrated,
+        [META]: { ...meta, version: SCHEMA_VERSION, lastBackup: meta.lastBackup || null },
+      });
+
+      return migrated;
+    }
+
+    return stored;
   },
 
   /**
-   * Persists AI settings.
-   * @param {{ endpoint: string, model: string }} settings
+   * Persists AI settings (multi-provider schema).
+   * @param {object} settings - Full AI settings object.
    * @returns {Promise<void>}
    */
   async setAiSettings(settings) {
-    await chrome.storage.local.set({
-      [AI_SETTINGS]: {
-        endpoint: settings.endpoint || CONFIG.AI.DEFAULT_ENDPOINT,
-        model: settings.model || CONFIG.AI.DEFAULT_MODEL,
-      },
-    });
+    const current = await this.getAiSettings();
+
+    const merged = {
+      aiProvider: settings.aiProvider || current.aiProvider || CONFIG.AI.DEFAULT_PROVIDER,
+
+      ollamaEndpoint: settings.ollamaEndpoint ?? current.ollamaEndpoint ?? CONFIG.AI.DEFAULT_ENDPOINT,
+      ollamaModel: settings.ollamaModel ?? current.ollamaModel ?? CONFIG.AI.DEFAULT_MODEL,
+
+      geminiApiKey: settings.geminiApiKey !== undefined ? settings.geminiApiKey : current.geminiApiKey ?? '',
+      geminiModel: settings.geminiModel ?? current.geminiModel ?? CONFIG.AI.DEFAULT_GEMINI_MODEL,
+
+      openRouterApiKey: settings.openRouterApiKey !== undefined ? settings.openRouterApiKey : current.openRouterApiKey ?? '',
+      openRouterModel: settings.openRouterModel ?? current.openRouterModel ?? CONFIG.AI.DEFAULT_OPENROUTER_MODEL,
+
+      groqApiKey: settings.groqApiKey !== undefined ? settings.groqApiKey : current.groqApiKey ?? '',
+      groqModel: settings.groqModel ?? current.groqModel ?? CONFIG.AI.DEFAULT_GROQ_MODEL,
+    };
+
+    await chrome.storage.local.set({ [AI_SETTINGS]: merged });
+  },
+
+  /**
+   * Returns default AI settings with no stored values.
+   * @returns {object}
+   */
+  getDefaultAiSettings() {
+    return {
+      aiProvider: CONFIG.AI.DEFAULT_PROVIDER,
+      ollamaEndpoint: CONFIG.AI.DEFAULT_ENDPOINT,
+      ollamaModel: CONFIG.AI.DEFAULT_MODEL,
+      geminiApiKey: '',
+      geminiModel: CONFIG.AI.DEFAULT_GEMINI_MODEL,
+      openRouterApiKey: '',
+      openRouterModel: CONFIG.AI.DEFAULT_OPENROUTER_MODEL,
+      groqApiKey: '',
+      groqModel: CONFIG.AI.DEFAULT_GROQ_MODEL,
+    };
   },
 
   // ── Sort Preference ─────────────────────────────────────
@@ -266,6 +327,36 @@ export const StorageService = {
     return workspaces.find((ws) => ws.id === id) || null;
   },
 
+  /**
+   * Renames an existing workspace.
+   * @param {string} id - The workspace ID.
+   * @param {string} newName - The new name for the workspace.
+   * @returns {Promise<{ oldName: string, newName: string }>}
+   */
+  async renameWorkspace(id, newName) {
+    if (!id) {
+      throw new Error('Invalid workspace ID.');
+    }
+    if (!newName || !newName.trim()) {
+      throw new Error('Workspace name cannot be empty.');
+    }
+
+    const workspaces = await this.getRawWorkspaces();
+    const index = workspaces.findIndex((ws) => ws.id === id);
+
+    if (index === -1) {
+      throw new Error(`Workspace with ID "${id}" not found.`);
+    }
+
+    const oldName = workspaces[index].name;
+    workspaces[index].name = newName.trim();
+    workspaces[index].updatedAt = Date.now();
+
+    await chrome.storage.local.set({ [WORKSPACES]: workspaces });
+
+    return { oldName, newName: newName.trim() };
+  },
+
   // ── Export / Import ─────────────────────────────────────
 
   /**
@@ -274,12 +365,14 @@ export const StorageService = {
    */
   async buildExportData() {
     const workspaces = await this.getRawWorkspaces();
+    const preferenceMemory = await this.getPreferenceMemory();
 
     return {
       version: CONFIG.EXPORT_VERSION,
       exportedAt: Date.now(),
       workspaceCount: workspaces.length,
       workspaces: JSON.parse(JSON.stringify(workspaces)),
+      preferenceMemory: preferenceMemory ? JSON.parse(JSON.stringify(preferenceMemory)) : null,
     };
   },
 
@@ -328,5 +421,25 @@ export const StorageService = {
     // Enforce workspace limit
     const limited = workspaces.slice(0, CONFIG.LIMITS.MAX_WORKSPACES);
     await chrome.storage.local.set({ [WORKSPACES]: limited });
+  },
+
+  // ── Preference Memory ──────────────────────────────────
+
+  /**
+   * Retrieves the preference memory object from storage.
+   * @returns {Promise<object|null>}
+   */
+  async getPreferenceMemory() {
+    const result = await chrome.storage.local.get(PREFERENCE_MEMORY);
+    return result[PREFERENCE_MEMORY] || null;
+  },
+
+  /**
+   * Persists the preference memory object.
+   * @param {object} memory - The full preference memory object.
+   * @returns {Promise<void>}
+   */
+  async savePreferenceMemory(memory) {
+    await chrome.storage.local.set({ [PREFERENCE_MEMORY]: memory });
   },
 };

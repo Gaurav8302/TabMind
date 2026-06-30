@@ -18,6 +18,7 @@
             <p class="subtitle-text">Intelligent workspace manager</p>
           </div>
         </div>
+        <button id="prefSettingsToggle" class="icon-btn" title="Preference Learning">🧠</button>
         <button id="aiSettingsToggle" class="icon-btn" title="AI Settings">⚙</button>
       </div>
     </header>
@@ -25,37 +26,114 @@
     <!-- AI Settings Panel (collapsed by default) -->
     <section id="aiSettingsPanel" class="ai-settings-panel" style="display: none;">
       <div class="ai-settings-header">
-        <span class="ai-settings-title">AI Settings</span>
+        <span class="ai-settings-title">AI Provider</span>
         <span id="aiStatusIndicator" class="ai-status-dot offline" title="Not connected"></span>
       </div>
       <div class="input-group">
-        <label for="aiEndpoint" class="input-label">Ollama Endpoint</label>
-        <input 
-          type="text" 
-          id="aiEndpoint" 
-          class="text-input ai-input" 
-          placeholder="http://localhost:11434"
-          autocomplete="off"
-        >
+        <label for="aiProvider" class="input-label">Provider</label>
+        <select id="aiProvider" class="sort-select">
+          <option value="ollama">Ollama (Local)</option>
+          <option value="gemini">Gemini</option>
+          <option value="openrouter">OpenRouter</option>
+          <option value="groq">Groq</option>
+        </select>
       </div>
-      <div class="input-group">
-        <label for="aiModel" class="input-label">Model</label>
-        <input 
-          type="text" 
-          id="aiModel" 
-          class="text-input ai-input" 
-          placeholder="gemma3:1b"
-          autocomplete="off"
-        >
+
+      <!-- Ollama Settings -->
+      <div id="provider-ollama" class="provider-section">
+        <div class="input-group">
+          <label for="aiEndpoint" class="input-label">Endpoint</label>
+          <input type="text" id="aiEndpoint" class="text-input ai-input" placeholder="http://localhost:11434" autocomplete="off">
+        </div>
+        <div class="input-group">
+          <label for="aiModel" class="input-label">Model</label>
+          <input type="text" id="aiModel" class="text-input ai-input" placeholder="qwen3:4b" autocomplete="off">
+        </div>
       </div>
+
+      <!-- Gemini Settings -->
+      <div id="provider-gemini" class="provider-section" style="display:none;">
+        <div class="input-group">
+          <label for="geminiApiKey" class="input-label">API Key</label>
+          <input type="password" id="geminiApiKey" class="text-input ai-input" placeholder="Paste your Gemini API key" autocomplete="off">
+        </div>
+        <div class="input-group">
+          <label for="geminiModel" class="input-label">Model <span class="input-hint">(optional)</span></label>
+          <input type="text" id="geminiModel" class="text-input ai-input" placeholder="gemini-2.5-flash" autocomplete="off">
+        </div>
+      </div>
+
+      <!-- OpenRouter Settings -->
+      <div id="provider-openrouter" class="provider-section" style="display:none;">
+        <div class="input-group">
+          <label for="openRouterApiKey" class="input-label">API Key</label>
+          <input type="password" id="openRouterApiKey" class="text-input ai-input" placeholder="Paste your OpenRouter API key" autocomplete="off">
+        </div>
+        <div class="input-group">
+          <label for="openRouterModel" class="input-label">Model <span class="input-hint">(optional)</span></label>
+          <input type="text" id="openRouterModel" class="text-input ai-input" placeholder="google/gemini-2.5-flash" autocomplete="off">
+        </div>
+      </div>
+
+      <!-- Groq Settings -->
+      <div id="provider-groq" class="provider-section" style="display:none;">
+        <div class="input-group">
+          <label for="groqApiKey" class="input-label">API Key</label>
+          <input type="password" id="groqApiKey" class="text-input ai-input" placeholder="Paste your Groq API key" autocomplete="off">
+        </div>
+        <div class="input-group">
+          <label for="groqModel" class="input-label">Model <span class="input-hint">(optional)</span></label>
+          <input type="text" id="groqModel" class="text-input ai-input" placeholder="llama-3.3-70b-versatile" autocomplete="off">
+        </div>
+      </div>
+
       <div class="ai-settings-actions">
         <button id="aiTestBtn" class="tool-btn ai-test-btn">Test Connection</button>
         <button id="aiSaveBtn" class="tool-btn ai-save-btn">Save</button>
       </div>
     </section>
 
+    <!-- Preference Learning Panel (collapsed by default) -->
+    <section id="prefSettingsPanel" class="pref-settings-panel" style="display: none;">
+      <div class="pref-settings-header">
+        <span class="pref-settings-title">Preference Learning</span>
+        <label class="toggle-label">
+          <input type="checkbox" id="learningToggle" checked>
+          <span class="toggle-switch"></span>
+        </label>
+      </div>
+      <div id="prefStatsContainer" class="pref-stats-container">
+        <div class="pref-stat-item">
+          <span class="pref-stat-value" id="prefDomainCount">0</span>
+          <span class="pref-stat-label">Domains</span>
+        </div>
+        <div class="pref-stat-item">
+          <span class="pref-stat-value" id="prefPatternCount">0</span>
+          <span class="pref-stat-label">Patterns</span>
+        </div>
+        <div class="pref-stat-item">
+          <span class="pref-stat-value" id="prefNamingCount">0</span>
+          <span class="pref-stat-label">Names</span>
+        </div>
+        <div class="pref-stat-item">
+          <span class="pref-stat-value" id="prefCorrectionCount">0</span>
+          <span class="pref-stat-label">Corrections</span>
+        </div>
+      </div>
+      <div class="pref-actions">
+        <button id="prefExportBtn" class="tool-btn">Export Memory</button>
+        <button id="prefClearBtn" class="tool-btn pref-clear-btn">Clear Memory</button>
+      </div>
+    </section>
+
     <!-- AI Organize Button -->
     <section class="ai-organize-section">
+      <select id="organizeProvider" class="organize-provider-select" title="AI Provider">
+        <option value="ollama">Ollama</option>
+        <option value="gemini">Gemini</option>
+        <option value="openrouter">OpenRouter</option>
+        <option value="groq">Groq</option>
+      </select>
       <button id="organizeBtn" class="organize-btn">
         <span class="organize-icon">✦</span>
         Organize Tabs with AI
@@ -140,7 +218,7 @@
         <img src="/assets/logo.png" alt="" class="footer-logo" />
         <span class="footer-text">TabMind</span>
       </div>
-      <span class="version-badge">v4.5.0</span>
+      <span class="version-badge">v4.6.0</span>
     </footer>
   </div>
 
